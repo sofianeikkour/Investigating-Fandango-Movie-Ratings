@@ -1,0 +1,327 @@
+---
+title: "Investigating Fandango Movie Ratings"
+author: "Sofiane Ikkour"
+output: html_document
+---
+
+
+#### **Context:**  
+
+This project is about analyzing an online movie rating aggregator called [Fandango](https://www.fandango.com/). In october 2015, a data journalist named Walt Hickey analyzed movie ratings data and found strong evidence to suggest that Fandango's rating system was biased. He published his analysis in this [article](https://fivethirtyeight.com/features/fandango-movies-ratings/). With a 5-star rating system (the minimum rating is 0 and the maximum rating is 5), Hickey found that there is a significant discrepancy between the number of stars displayed to users and the actual rating, whick he was able to find in the HTML of the page. he was able to find that:  
+- The actual rating was almost always rounded up to the nearest half-star. For instance, a 4.1 movie would be rounded off to 4.5 stars, not to 4 stars.   
+- In the case of 8% of the ratings analyzed, the rounding up was done to the nearest whole star. For instance, a 4.5 star would be rounded off to 5 stars.  
+- For one movie, the rounding off went from 4 to 5 stars.
+
+Frandango's officials replied that the biased rounding off was caused by a bug in their system rather than being intentional, and they promised to fix the bug as soon as possible.
+
+#### **Goal:**  
+
+Our goal is to analyze more recent movie ratings data to determine whether the has been any change in the Fandango's rating system after Hickey's analysis.  
+
+#### **Dataset:**  
+
+The best way to figure out whether there has been any change in Fandango's rating system after Hickey's analysis is to compare the system's characteristics before and after the analysis. To do that, I used two datasets:
+- The first dataset is the one analyzed by Walt Hickey which he made available on [Github](https://github.com/fivethirtyeight/data/tree/master/fandango). This data is a csv file named "fandango_score_comparison.csv" and is used to analyze the characteristics of Fandango's rating system before his analysis. You can find the description of each column in the given link.
+- The second dataset contains movie ratings data for movies released in 2016 and 2017. This data is named "movie_ratings_16_17.csv" and is used to analyze the rating system's characteristics after Hickey's analysis. Below is the descriptionof each column:
+
+1. movie: the name of the movie.
+2. year: the release year of the movie.
+3. metascore: the Metacritic rating of the movie (the "metascore" - critic score).
+4. imdb: the IMDB rating of the movie (user score).
+5. tmeter: the Rotten Tomatoes rating of the movie (the "tomatometer" - critic score).
+6. audience: the Rotten Tomatoes rating of the movie (user score).
+7. fandango: the Fandango rating of the movie (user score).
+8. n_metascore: the metascore normalized to a 0-5 scale.
+9. n_imdb: 	the IMDB rating normalized to a 0-5 scale.
+10. n_tmeter: the tomatometer normalized to a 0-5 scale.
+11. n_audience: the Rotten Tomatoes user score normalized to a 0-5 scale.
+12. nr_metascore: the metascore normalized to a 0-5 scale and rounded to the nearest 0.5.
+13. nr_imdb: the IMDB rating normalized to a 0-5 scale and rounded to the nearest 0.5.
+14. nr_tmeter: the tomatometer normalized to a 0-5 scale and rounded to the nearest 0.5.
+15. nr_audience: the Rotten Tomatoes user score normalized to a 0-5 scale and rounded to the nearest 0.5.
+
+
+**Note:** this code was written on RStudio.  
+**Language:** R.  
+**Packages:** readr, dplyr, stringr, ggplot2, tidyr.
+
+
+**Read and explore the two datasets**
+```{r}
+# load the relevant libraries
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(tidyr)
+# set the working directory
+setwd("C:/Users/Aylan/Documents/IT/DataQuest/R/Investigating Fandango Movie Ratings")
+
+# read the "fandango_score_comparison.csv" dataset
+data_before <- read_csv("fandango_score_comparison.csv", col_types = cols())
+
+# display the first few rows
+head(data_before, 10)
+
+# display the number of rows and columns
+print(paste("The number of rows of 'fandango_score_comparison' is:", nrow(data_before)))
+print(paste("The number of columns of 'fandango_score_comparison' is:", ncol(data_before)))
+```
+
+```{r}
+# read the "fandango_score_comparison.csv" dataset
+data_after <- read_csv("movie_ratings_16_17.csv", col_types = cols())
+
+# display the first few rows
+head(data_after, 10)
+
+# display the number of rows and columns
+print(paste("The number of rows of 'movie_ratings_16_17' is:", nrow(data_after)))
+print(paste("The number of columns of 'movie_ratings_16_17' is:", ncol(data_after)))
+```
+
+```{r}
+# isolate the columns that offer information about Fandango's ratings in separate variables
+data_before_ratings <- data_before %>%
+  select("FILM", "Fandango_Stars", "Fandango_Ratingvalue", "Fandango_votes", "Fandango_Difference")
+
+# display the first few rows
+print(head(data_before_ratings))
+
+data_after_ratings <- data_after %>%
+  select("movie", "year", "fandango")
+
+# display the first few rows
+print(head(data_after_ratings))
+```
+
+**Define the population of interest for our goal**
+
+Our goal is to determine whether there has been any change in Fandango's rating system after Hickey's analysis. the population of interest for our analysis is made of the movie ratings stored on Fandango's website, regardless of the releasing year.   
+
+Because we want to find out whether the parameters of this population changed after Hickey's analysis, we're interested in sampling the population at two different periods in time, previous and after Hickey's analysis, and compare the two states.  
+
+From Hickey's article, we can see that the following criteria was used:  
+- The movie must have had at least 30 fan ratings on Fandango's website at the time of sampling (Aug. 24, 2015).  
+- The movie must have had tickets on sale in 2015.  
+
+The sampling was clearly not random because not every movie had the same chance to be included in the sample. Some movies like those having under 30 fan ratings or those without tickets on sale in 2015 didn't have the chance at all.   
+
+The sampling criteria for the other sample are:  
+- The movie must have been released in 2016 or later.  
+- The movie must have had a considerable number of votes and reviews.  
+
+For the two samples, it's unlikely that they are representative of our population of interest mainly because they are subject to temporal trends.
+
+**Change the goal of our analysis**  
+
+We need to slightly change the current goal of our analysis such that the population of interest changes and the samples we currently work with become representative. Instead of trying to determine whether there has been any change in Fandango's rating system after Hickey's analysis, our new goal is to determine if there is any difference between Fandango's ratings for popular movies in 2015 and Fandango's ratings for popular movies in 2016. This new goal is still a fairly good proxy for our initial goal.
+
+**Isolate the samples**
+
+With our new goal, we now have two populations that we want to describe and compare with each other:
+
+- All Fandango's ratings for popular movies released in 2015.  
+- All Fandango's ratings for popular movies released in 2016.
+
+We need to define the term "popular" more clearly before continuing. We can use Hickey's benchmark of 30 fan ratings and consider a movie as "popular" only if it has 30 fan ratings or more on Fandango's website.  
+The second sample doesn't provide information about the number of fan ratings and this could be an issue for the sample to be representative and to contain enough popular movies (movies with more than 30 fan ratings).  
+One way to find out if the sample is representative is to randomly sample 10 movies from it and then check the number of fan ratings on Fandango's website. 
+
+```{r}
+# sample 10 movies from the second sample
+set.seed(1) # use the value 1 as random seed
+sample_after_ratings <- sample_n(tbl = data_after_ratings, size = 10)
+
+# display the sample
+head(sample_after_ratings, 10)
+```
+
+As of March 2022, these are the fan ratings I found:
+
+![Fan Ratings](/Users/Aylan/Documents/IT/DataQuest/R/Investigating Fandango Movie Ratings/Fan_ratings.JPG)
+
+
+All of the movies are popular. 
+
+Let's also check the other dataset for popular movies. The documentation says that there are only movies with at least 30 fan ratings, so let's check that information.
+
+```{r}
+# check if there are any movies with less than 30 fan ratings in the first dataset
+check_ratings <- data_before_ratings %>%
+  filter(Fandango_votes < 30)
+
+# display the result
+head(check_ratings)
+```
+
+The result shows that there are no movies with fan ratings less than 30 for the first dataset.  
+
+If we explore the datasets enough, we'll notice that some movies were not released in 2015 and 2016. We need to isolate only the sample points that belong to our populations of interest.
+
+Therefore, we isolate the movies released in 2015 for the first dataset and the movies released in 2016 for the second dataset.
+
+```{r}
+# isolate the movies released in 2015 for the first dataset
+# first, we need to subtract the year from the FILM column and assign it to a new column named Year
+data_before_ratings$Year <- str_sub(data_before_ratings$FILM, start = -5, end = -2)
+
+data_2015 <- data_before_ratings %>%
+  filter(Year == 2015)
+
+# display the first few rows
+head(data_2015, 10)
+
+# isolate the movies released in 2016 for the second dataset
+data_2016 <- data_after_ratings %>%
+  filter(year == 2016)
+
+# display the first few rows
+head(data_2016, 10)
+```
+
+**Comparison between the shapes of the distributions of movie ratings for both samples**
+
+We can now start analyzing the two samples we previously isolated. Once again, our goal is to determine whether there's any difference between Fandango's ratings for popular movies in 2015 and Fandango's ratings for popular movies in 2016. One way to go about it is to make a comparison by generating two kernel density plots on the same figure for the distribution of movie ratings for each sample.
+
+```{r}
+# generate two kernel density plots for the distribution of movie ratings for each sample
+ggplot(data = data_2015,
+       aes(x = Fandango_Stars)) +
+  geom_density() +
+  # generate a second density plot using the data_2016 dataset
+  geom_density(data = data_2016,
+               aes(x = fandango), color = "blue") +
+  labs(
+    title = "Density plots for the distribution of movie ratings",
+    x = "Fandango Stars",
+    y = "Density"
+  ) +
+  scale_x_continuous(breaks = seq(0, 5, by = 0.5),
+                     limits = c(0, 5)) +
+  theme(
+    legend.position = c(0.1, 0.1)
+  )
+```
+
+**Observations:**
+
+- Both distributions are left skewed.
+- The 2016 distribution is slightly shifted to the left compared to the 2015 distribution.
+
+The left shift of the 2016 distribution is interesting for our analysis. It shows that the 2016 ratings were slightly lower than the 2015 ratings which indicates that there is a difference between Fandango's ratings for popular movies of 2015 compared to the ratings for popular movies of 2016. There is also a difference in terms of direction in the difference where we can see that the 2016 ratings were lower compared to 2015.
+
+
+**Analyze more granular information** 
+
+In this part of our analysis, we'll analyze more granular information. 
+
+```{r}
+# examine the frequency distribution tables of the two distributions
+# create a frequency distribution table for the data_2015 table
+freq_dist_2015 <- data_2015 %>%
+  group_by(Fandango_Stars) %>%
+  summarize(Percentage = n() / nrow(data_2015) * 100)
+
+# print the table
+print("Frequency distribution for the 2015 ratings:")
+cat("\n")
+freq_dist_2015
+```
+
+```{r}
+# create a frequency distribution table for the data_2016 table
+freq_dist_2016 <- data_2016 %>%
+  group_by(fandango) %>%
+  summarize(Percentage = n() / nrow(data_2016) * 100)
+
+# print the table
+print("Frequency distribution for the 2016 ratings:")
+cat("\n")
+freq_dist_2016
+```
+
+**Observations:**  
+
+- In 2015, high ratings (4.5 and 5) had clearly higher percentages compared to 2016. Also, lower ratings (3 and 3.5) of 2016 movies had lower percentages compared to 2015. However, other ratings (4 stars) had significantly a higher percentage for the 2016 movies than 2015 movies. this challenges a bit the direction of the difference which is not as clear as it was the kernel density plots.
+- The minimum rating rate in 2016 was 2.5 stars, while the minimum rating rate for 2015 was 3 stars.
+- We can conclude that there is clearly a difference in the rating rate after Hickey's analysis. 
+
+**Summary statistics**
+
+Our next task is to take a couple of summary statistics to get more information about the direction of the difference. We'll take each distribution of movie ratings and compute its mean, median and mode, and then compare these statistics to have more insight on the direction of the difference.
+
+```{r}
+# compute the mean, median, and mode for the 2015 distribution
+mean_2015 <- mean(data_2015$Fandango_Stars)
+median_2015 <- median(data_2015$Fandango_Stars)
+# for the mode there is no built-in function in R, si I created a custom function to calculate the mode
+mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+mode_2015 <- mode(data_2015$Fandango_Stars)
+
+# compute the mean, median, and mode for the 2016 distribution
+mean_2016 <- mean(data_2016$fandango)
+median_2016 <- median(data_2016$fandango)
+mode_2016 <- mode(data_2016$fandango)
+
+# create a dataframe which displays the results
+a <- c(mean_2015, median_2015, mode_2015)
+b <- c(mean_2016, median_2016, mode_2016)
+c <- c("2015", "2016")
+d <- c("mean", "median", "mode")
+df <- data.frame(a, b)
+rownames(df) <- d
+colnames(df) <- c
+df # print the dataframe
+```
+
+```{r}
+# create a summary dataframe we can use later in order to generate a barplot
+summary_2015 <- data_2015 %>%
+  summarize(year = "2015",
+            mean = mean_2015,
+            median = median_2015,
+            mode = mode_2015)
+summary_2016 <- data_2016 %>%
+  summarize(year = "2016",
+            mean = mean_2016,
+            median = median_2016,
+            mode = mode_2016)
+
+# combine the two summary dataframes
+summary_df <- bind_rows(summary_2015, summary_2016)
+
+# print the summary dataframe
+summary_df
+```
+
+```{r}
+# gather the combined dataframe so it can be compatible with ggplot
+summary_df_gathered <- summary_df %>%
+  gather(key = "statistic", value = "values", 2:4)
+
+# print the gathered dataframe
+summary_df_gathered
+```
+
+```{r}
+# generate a barplot to compare the mean, median, and mode for 2015 and 2016
+ggplot(data = summary_df_gathered,
+       aes(x = statistic, y = values, fill = year)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Compare metrics of 2015 & 2016",
+    x = "Statistics",
+    y = "Fandango_Stars"
+  )
+```
+
+**Observations:**
+
+- The graph shows that the mean for 2016 is lower than 2015.
+- The median is the same between 2015 and 2016.
+- The mode has the same tendency as the mean which is lower for 2016 than 2015.
+- These observations confirm what we saw with the kernel density plot and indicate that popular movies in 2016 had lower ratings after the Hickey's analysis.
